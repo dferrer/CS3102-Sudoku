@@ -9,9 +9,6 @@ for d in os.listdir('./puzzles'):
 	with open(filename) as f:
 		puzzles = [p.strip() for p in f.readlines()]
 		n = int(math.sqrt(len(puzzles[0])))
-		i = 1
-		for p in puzzles:
-			new = convert(p, n)
+		for p, i in zip(puzzles,range(1,len(puzzles))):
 			with open('{0}/formatted/formatted{1}.txt'.format(dirname,i), 'w') as f2:
-				f2.write(new)
-			i += 1
+				f2.write(convert(p,n))
