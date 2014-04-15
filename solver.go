@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"os"
 	"sort"
 	"strings"
 )
@@ -72,9 +73,7 @@ func getUnitsAndPeers(squares []string, unitList [][]string) (map[string][][]str
 }
 
 func readInput() string {
-	var filename string
-	fmt.Print("Enter filename containing Sudoku to be solved: ")
-	fmt.Scan(&filename)
+	filename := os.Args[1]
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
 		panic(err)
@@ -169,7 +168,6 @@ func eliminate(values map[string]string, square, digit string, units map[string]
 }
 
 func displayGrid(values map[string]string, size int) {
-	fmt.Println()
 	box_sep := int(math.Sqrt(float64(size)))
 	line_sep := size
 	section_sep := line_sep * box_sep
