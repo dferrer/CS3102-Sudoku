@@ -1,11 +1,12 @@
 go build main.go
 START=$(date +%s)
 INDEX=0
-for p in puzzles/1*/formatted/*
-# for p in puzzles/big/formatted/*
+# parallel --gnu --jobs 0 ./main ::: puzzles/big/formatted/* #> ${p//formatted/solved}
+# for p in puzzles/[^12]*/formatted/*
+for p in puzzles/[^12]*/formatted/*
 do
-	echo "$p"
-	parallel ./main ::: $p > ${p//formatted/solved}
+	# echo "$p"
+	./main $p & #> ${p//formatted/solved}
 	INDEX=$[$INDEX + 1]
 done
 wait

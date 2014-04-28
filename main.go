@@ -9,15 +9,54 @@ import (
 	"strings"
 )
 
-type ValueMap struct {
-	m         map[string]string
-	numSolved int
-	flag      bool // might be able to get rid of this
+type Puzzle struct {
+	values    map[string]string // Possible values at each square in the puzzle.
+	numSolved int               // Number of solved squares (only 1 possible value for a square).
+	alive     bool              // This puzzle is still a possible solution.
 }
 
-func (vm ValueMap) GetMinSquare(squares []string) (minSquare string) {
+// Getter function for values field.
+func (p Puzzle) Values() map[string]string {
+	return p.values
+}
+
+// Looks up the possible values for a given square.
+func (p Puzzle) Get(square string) string {
+	return p.values[square]
+}
+
+// Sets the possible values for a given square.
+func (p *Puzzle) Set(square string, digits string) {
+	p.values[square] = digits
+}
+
+// Removes a character from the possible values for a given square.
+func (p *Puzzle) Remove(square string, char string) {
+	vals := strings.Replace(p.values[square], char, "", 1)
+	p.values[square] = vals
+}
+
+// Called when there is only one possible value for a square.
+func (p *Puzzle) Increment() {
+	p.numSolved++
+}
+
+// Called when there is only one possible value for all squares in a puzzle.
+func (p Puzzle) IsSolved() bool {
+	return p.numSolved == size*size
+}
+
+// Called when a contradiction is discovered during propogation and is
+// is no longer possible for an instance of a Puzzle to be a solution.
+func (p *Puzzle) Fail() {
+	p.alive = false
+}
+
+// Finds the square with the fewest possible values in order to
+// intelligently choose a starting point for the next search attempt.
+func (p Puzzle) GetBestSquare(squares []string) (minSquare string) {
 	minLength := size + 1
-	for square, value := range vm.M() {
+	for square, value := range p.Values() {
 		length := len(value)
 		if length == 2 {
 			return square
@@ -28,90 +67,84 @@ func (vm ValueMap) GetMinSquare(squares []string) (minSquare string) {
 	return minSquare
 }
 
-func (vm ValueMap) Values(square string) string {
-	return vm.m[square]
+// Returns a copy of a Puzzle to be used in the next search attempt.
+func (self *Puzzle) Copy() *Puzzle {
+	p := &Puzzle{}
+	*p = *self
+	p.values = CopyMap(self.Values())
+	return p
 }
 
-func (vm ValueMap) M() map[string]string {
-	return vm.m
+// Copies all elements in a map into a new map.
+func CopyMap(oldMap map[string]string) map[string]string {
+	newMap := make(map[string]string)
+	for key, val := range oldMap {
+		newMap[key] = val
+	}
+	return newMap
 }
 
-func (vm ValueMap) IsSolved() bool {
-	return vm.numSolved == size*size
-}
-
-func (vm *ValueMap) Fail() {
-	vm.flag = false
-}
-
-func (vm *ValueMap) IncrementNumSolved() {
-	vm.numSolved++
-}
-
-func (vm *ValueMap) RemoveValue(square string, digit string) {
-	vals := strings.Replace(vm.m[square], digit, "", 1)
-	vm.m[square] = vals
-}
-
-func (vm *ValueMap) SetValues(square string, digits string) {
-	vm.m[square] = digits
-}
-
-func crossProduct(s1, s2 string) []string {
-	arr := make([]string, size*size)
+// Computes the cross product of two strings to create a
+// combination of all squares associated with those strings.
+func allSquares(str1, str2 string) []string {
+	squares := make([]string, size*size)
 	index := 0
-	for _, c1 := range s1 {
-		for _, c2 := range s2 {
-			arr[index] = string(c1) + string(c2)
+	for _, char1 := range str1 {
+		for _, char2 := range str2 {
+			squares[index] = string(char1) + string(char2)
 			index++
 		}
 	}
-	return arr
+	return squares
 }
 
-func makeUnits(s1, s2 string, reverse bool) [][]string {
+// Computes slices of units for rows and columns.
+func makeUnits(str1, str2 string, reverse bool) [][]string {
 	units := make([][]string, size)
-	for i, c := range s2 {
+	for index, char := range str2 {
 		if reverse {
-			units[i] = crossProduct(s1, string(c))
+			units[index] = allSquares(str1, string(char))
 		} else {
-			units[i] = crossProduct(string(c), s1)
+			units[index] = allSquares(string(char), str1)
 		}
 	}
 	return units
 }
 
-func makeBoxUnits(sl1, sl2 []string) [][]string {
+// Computes slices of units for boxes.
+func makeBoxUnits(slice1, slice2 []string) [][]string {
 	units := make([][]string, size)
 	index := 0
-	for _, s1 := range sl1 {
-		for _, s2 := range sl2 {
-			units[index] = crossProduct(s1, s2)
+	for _, str1 := range slice1 {
+		for _, str2 := range slice2 {
+			units[index] = allSquares(str1, str2)
 			index++
 		}
 	}
 	return units
 }
 
-func exists(sl []string, s1 string) bool {
-	for _, s2 := range sl {
-		if s1 == s2 {
+// Checks if a slice contains a given string.
+func contains(slice []string, toMatch string) bool {
+	for _, str := range slice {
+		if toMatch == str {
 			return true
 		}
 	}
 	return false
 }
 
-func getUnitsAndPeers(squares []string, unitList [][]string) (map[string][][]string, map[string][]string) {
-	units := map[string][][]string{}
-	peers := map[string][]string{}
-	for _, s := range squares {
-		for _, u := range unitList {
-			if exists(u, s) {
-				units[s] = append(units[s], u)
-				for _, sq := range u {
-					if sq != s && !exists(peers[s], sq) {
-						peers[s] = append(peers[s], sq)
+// Creates maps of squares to units and peers associated with each square.
+func getUnitsAndPeers(squares []string, allUnits [][]string) (map[string][][]string, map[string][]string) {
+	units := make(map[string][][]string)
+	peers := make(map[string][]string)
+	for _, square := range squares {
+		for _, unit := range allUnits {
+			if contains(unit, square) {
+				units[square] = append(units[square], unit)
+				for _, usquare := range unit {
+					if usquare != square && !contains(peers[square], usquare) {
+						peers[square] = append(peers[square], usquare)
 					}
 				}
 			}
@@ -120,111 +153,136 @@ func getUnitsAndPeers(squares []string, unitList [][]string) (map[string][][]str
 	return units, peers
 }
 
+// Places given input values into a puzzle and propogates constraints.
+func parseInput(p *Puzzle, grid map[string]string) bool {
+	for square, char := range grid {
+		if char != "." && !place(p, square, char) {
+			p.Fail()
+			return false
+		}
+	}
+	return true
+}
+
+// Assigns a given character as the solution value at a given square.
+func place(p *Puzzle, square, char string) bool {
+	for _, val := range allValues {
+		if string(val) != char && !propogate(p, square, string(val)) {
+			p.Fail()
+			return false
+		}
+	}
+	return true
+}
+
+// Removes a given character as a possible solution value at a given square and uses
+// the new values at that square to eliminate more possibilities from other squares.
+func propogate(p *Puzzle, square, char string) bool {
+	// The value is not present in the possibilites; already propogated.
+	if !strings.Contains(p.Get(square), char) {
+		return true
+	}
+
+	// Else, remove that character from the possibilites and begin propogation.
+	p.Remove(square, char)
+	vals := p.Get(square)
+	length := len(vals)
+
+	// If a square has a solution value, remove that value from the square's peers.
+	if length == 0 { // None of the possible values for this square result in a solution; fail.
+		p.Fail()
+		return false
+	} else if length == 1 { // There is only one possible value for this square; propogate.
+		p.Increment()
+		for _, peerSquare := range peers[square] {
+			if !propogate(p, peerSquare, vals) { // Propogation does not return a valid solution; fail.
+				p.Fail()
+				return false
+			}
+		}
+	}
+
+	// If there is only one possible place for a value in a unit, place that value accordingly.
+	for _, unit := range units[square] {
+		locations := make([]string, size) // Valid locations for a value in a unit.
+		index := 0
+		for _, unitSquare := range unit {
+			if strings.Contains(p.Get(unitSquare), char) {
+				locations[index] = unitSquare
+				index++
+			}
+		}
+		if len(locations) == 0 { // The value can't be placed at any of the possible locations; fail.
+			return false
+		} else if len(locations) == 1 && !place(p, locations[0], char) {
+			// There is only one possible location for a value; place and propogate.
+			p.Fail()
+			return false
+		}
+	}
+	return true
+}
+
+// Uses depth-first search to look for solutions to a puzzle.
+func search(p *Puzzle, squares []string) {
+	if !p.alive { // There was a contradiction during propogation; this is not a solution.
+		return
+	} else if p.IsSolved() { // All squares have only one possible value; display the solution.
+		showPuzzle(p)
+		os.Exit(0)
+	} else { // This could be a solution; pick a good square and keep searching.
+		square := p.GetBestSquare(squares)
+		for _, val := range p.Get(square) {
+			newP := p.Copy()
+			place(newP, square, string(val))
+			search(newP, squares)
+		}
+	}
+	return
+}
+
+// Takes in a filename as a command-line argument and returns the contents as a string.
 func readInput() string {
 	filename := os.Args[1]
-	content, err := ioutil.ReadFile(filename)
-	if err != nil {
-		panic(err)
-	}
+	content, _ := ioutil.ReadFile(filename)
 	return string(content)
 }
 
+// Scans the first line of the input grid to determine the dimensions of the grid.
 func getSize(grid string) int {
-	for i, c := range grid {
-		if c == '\n' {
-			return i
+	for index, char := range grid {
+		if char == '\n' {
+			return index
 		}
 	}
 	return -1
 }
 
+// Converts the contents of a grid file into a map of squares to
+// blank '.' characters and "hint" values given in the input grid.
 func makeGrid(grid string, squares []string) map[string]string {
-	entries := map[string]string{}
+	entries := make(map[string]string)
 	grid = strings.Replace(grid, "\n", "", -1)
-	for i, c := range grid {
-		entries[squares[i]] = string(c)
+	for index, char := range grid {
+		entries[squares[index]] = string(char)
 	}
 	return entries
 }
 
-func parseGrid(grid map[string]string, values *ValueMap, units map[string][][]string, peers map[string][]string, digits string) bool {
-	for sq, digit := range grid {
-		if digit != "." {
-			if !assign(values, sq, digit, units, peers, digits) {
-				values.Fail()
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func assign(values *ValueMap, square, digit string, units map[string][][]string, peers map[string][]string, digits string) bool {
-	for _, d := range digits {
-		if string(d) != digit {
-			if !eliminate(values, square, string(d), units, peers, digits) {
-				values.Fail()
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func eliminate(values *ValueMap, square, digit string, units map[string][][]string, peers map[string][]string, digits string) bool {
-	if !strings.Contains(values.Values(square), digit) {
-		return true
-	}
-	values.RemoveValue(square, digit)
-	vals := values.Values(square)
-	length := len(vals)
-
-	if length == 0 {
-		values.Fail()
-		return false
-	} else if length == 1 {
-		values.IncrementNumSolved()
-		solutionDigit := vals // might be able to use vals directly without need to reassign
-		for _, peerSquare := range peers[square] {
-			if !eliminate(values, peerSquare, solutionDigit, units, peers, digits) {
-				values.Fail()
-				return false
-			}
-		}
-	}
-
-	for _, unit := range units[square] {
-		digitPlaces := []string{}
-		for _, unitSquare := range unit {
-			if strings.Contains(values.Values(unitSquare), digit) {
-				digitPlaces = append(digitPlaces, unitSquare)
-			}
-		}
-		if len(digitPlaces) == 0 {
-			return false
-		} else if len(digitPlaces) == 1 {
-			if !assign(values, digitPlaces[0], digit, units, peers, digits) {
-				values.Fail()
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func displayGrid(values *ValueMap) {
-	vals := values.M()
+// Formats and displays a puzzle.
+func showPuzzle(p *Puzzle) {
+	values := p.Values()
 	box_sep := int(math.Sqrt(float64(size)))
 	line_sep := size
 	section_sep := line_sep * box_sep
 	var squares []string
-	for sq, _ := range vals {
+	for sq, _ := range values {
 		squares = append(squares, sq)
 	}
 	sort.Strings(squares)
 	i := 1
 	for _, sq := range squares {
-		digit := vals[sq]
+		digit := values[sq]
 		fmt.Print(digit + " ")
 		if i%section_sep == 0 {
 			fmt.Println("\n")
@@ -237,96 +295,70 @@ func displayGrid(values *ValueMap) {
 	}
 }
 
-func CopyMap(oldmap map[string]string) map[string]string {
-	newmap := make(map[string]string)
-	for k, v := range oldmap {
-		newmap[k] = v
-	}
-	return newmap
-}
-
-func (self *ValueMap) Copy() *ValueMap {
-	vm := &ValueMap{}
-	*vm = *self
-	vm.m = CopyMap(self.M())
-	return vm
-}
-
-func search(values *ValueMap, squares []string, units map[string][][]string, peers map[string][]string, digits string) {
-	if !values.flag {
-		return
-	} else if values.IsSolved() {
-		displayGrid(values)
-		os.Exit(0)
-	} else {
-		sq := values.GetMinSquare(squares)
-		for _, digit := range values.Values(sq) {
-			copyVals := values.Copy()
-			assign(copyVals, sq, string(digit), units, peers, digits)
-			search(copyVals, squares, units, peers, digits)
-		}
-	}
-	return
-}
-
-var size int
+var size int                    // Dimensions of a grid.
+var allValues string            // All possible solution values for a square.
+var squares []string            // All squares in a grid.
+var units map[string][][]string // A unit is the set of all squares in a row, column, or box.
+var peers map[string][]string   // A peer is the set of all unique unit squares for a given square.
 
 func main() {
-	// Read Sudoku grid from file and get the dimension of the grid.
-	grid := readInput()
-	size = getSize(grid)
+	// Read Sudoku from file and get the size of the grid.
+	rawGrid := readInput()
+	size = getSize(rawGrid)
 
 	// Represent the Sudoku grid the same way as a chess board.
 	// Each square in the grid is represented as 'A1', 'A2', etc.
 	rows := "ABCDEFGHI"
 	cols := "123456789"
+	allValues = "123456789"
 	rowBoxes := []string{"ABC", "DEF", "GHI"}
 	colBoxes := []string{"123", "456", "789"}
 
 	// The possible values at a square.
-	digits := "123456789"
+
 	// if size == 16 {
 	// 	rows = "ABCDEFGHIJKLMNOP"
 	// 	cols = "123456789ABCDEFG"
-	// 	digits = "123456789ABCDEFG"
+	// 	allValues = "123456789ABCDEFG"
 	// 	rowBoxes = []string{"ABCD", "EFGH", "IJKL", "MNOP"}
 	// 	colBoxes = []string{"1234", "5678", "9ABC", "DEFG"}
 	// } else if size == 25 {
 	// 	rows = "ABCDEFGHIJKLMNOPQRSTUVWXY"
 	// 	cols = "123456789ABCDEFGHIJKLMNOP"
-	// 	digits = "123456789ABCDEFGHIJKLMNOP"
+	// 	allValues = "123456789ABCDEFGHIJKLMNOP"
 	// 	rowBoxes = []string{"ABCDE", "FGHIJ", "KLMNO", "PQRST", "UVWXY"}
 	// 	colBoxes = []string{"12345", "6789A", "BCDEF", "GHIJK", "LMNOP"}
 	// }
-	squares := crossProduct(rows, cols)
 
-	// Generate slices of row, column, and box units.
-	// A unit is the set of all squares in a row, column, or box.
+	// Get a slice of all squares in the Sudoku grid.
+	squares = allSquares(rows, cols)
+
+	// For each square, create a map of units and peers associated with that square.
 	rowUnits := makeUnits(rows, cols, true)
 	colUnits := makeUnits(cols, rows, false)
 	boxUnits := makeBoxUnits(rowBoxes, colBoxes)
+	allUnits := append(append(rowUnits, colUnits...), boxUnits...)
+	units, peers = getUnitsAndPeers(squares, allUnits)
 
-	// Create a map of squares to units and peers associated with each square.
-	// A square's peer is every unique unit associated with that square
-	// except for the square itself.
-	unitList := append(append(rowUnits, colUnits...), boxUnits...)
-	units, peers := getUnitsAndPeers(squares, unitList)
-
-	// Create a map of squares to possible values.
-	// Initially, each value can be any digit.
-	values := &ValueMap{
-		m:         make(map[string]string),
+	// Represent a Sudoku puzzle as a map of squares to possible values at each square.
+	puzzle := &Puzzle{
+		values:    make(map[string]string),
 		numSolved: 0,
-		flag:      true,
+		alive:     true,
 	}
 
+	// Initially, each square can take on any value.
 	for _, square := range squares {
-		values.SetValues(square, digits)
+		puzzle.Set(square, allValues)
 	}
 
 	// Parse the input grid into a map of squares to values.
-	m := makeGrid(grid, squares)
+	grid := makeGrid(rawGrid, squares)
 
-	parseGrid(m, values, units, peers, digits)
-	search(values, squares, units, peers, digits)
+	// Assign the values from the input grid to their corresponding squares in the solution grid.
+	// Propogate constraints to solve as much of the puzzle as possible before searching.
+	parseInput(puzzle, grid)
+
+	// Use depth-first search to try possible values until a solution is found.
+	search(puzzle, squares)
 }
