@@ -224,7 +224,7 @@ func propogate(p *Puzzle, square, char string) bool {
 }
 
 // Uses depth-first search to look for solutions to a puzzle.
-func search(p *Puzzle, squares []string) {
+func search(p *Puzzle) {
 	if !p.alive { // There was a contradiction during propogation; this is not a solution.
 		return
 	} else if p.IsSolved() { // All squares have only one possible value; display the solution.
@@ -235,7 +235,7 @@ func search(p *Puzzle, squares []string) {
 		for _, val := range p.Get(square) {
 			newP := p.Copy()
 			place(newP, square, string(val))
-			search(newP, squares)
+			search(newP)
 		}
 	}
 	return
@@ -316,19 +316,19 @@ func main() {
 
 	// The possible values at a square.
 
-	// if size == 16 {
-	// 	rows = "ABCDEFGHIJKLMNOP"
-	// 	cols = "123456789ABCDEFG"
-	// 	allValues = "123456789ABCDEFG"
-	// 	rowBoxes = []string{"ABCD", "EFGH", "IJKL", "MNOP"}
-	// 	colBoxes = []string{"1234", "5678", "9ABC", "DEFG"}
-	// } else if size == 25 {
-	// 	rows = "ABCDEFGHIJKLMNOPQRSTUVWXY"
-	// 	cols = "123456789ABCDEFGHIJKLMNOP"
-	// 	allValues = "123456789ABCDEFGHIJKLMNOP"
-	// 	rowBoxes = []string{"ABCDE", "FGHIJ", "KLMNO", "PQRST", "UVWXY"}
-	// 	colBoxes = []string{"12345", "6789A", "BCDEF", "GHIJK", "LMNOP"}
-	// }
+	if size == 16 {
+		rows = "ABCDEFGHIJKLMNOP"
+		cols = "123456789ABCDEFG"
+		allValues = "123456789ABCDEFG"
+		rowBoxes = []string{"ABCD", "EFGH", "IJKL", "MNOP"}
+		colBoxes = []string{"1234", "5678", "9ABC", "DEFG"}
+	} else if size == 25 {
+		rows = "ABCDEFGHIJKLMNOPQRSTUVWXY"
+		cols = "123456789ABCDEFGHIJKLMNOP"
+		allValues = "123456789ABCDEFGHIJKLMNOP"
+		rowBoxes = []string{"ABCDE", "FGHIJ", "KLMNO", "PQRST", "UVWXY"}
+		colBoxes = []string{"12345", "6789A", "BCDEF", "GHIJK", "LMNOP"}
+	}
 
 	// Get a slice of all squares in the Sudoku grid.
 	squares = allSquares(rows, cols)
@@ -360,5 +360,5 @@ func main() {
 	parseInput(puzzle, grid)
 
 	// Use depth-first search to try possible values until a solution is found.
-	search(puzzle, squares)
+	search(puzzle)
 }
