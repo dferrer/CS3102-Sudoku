@@ -10,30 +10,30 @@ import (
 )
 
 type Puzzle struct {
-	values    map[string]string // Possible values at each square in the puzzle.
+	grid      map[string]string // Grid of possible values at each square in the puzzle.
 	numSolved int               // Number of solved squares (only 1 possible value for a square).
 	alive     bool              // This puzzle is still a possible solution.
 }
 
-// Getter function for values field.
-func (p Puzzle) Values() map[string]string {
-	return p.values
+// Getter function for grid field.
+func (p Puzzle) Grid() map[string]string {
+	return p.grid
 }
 
 // Looks up the possible values for a given square.
 func (p Puzzle) Get(square string) string {
-	return p.values[square]
+	return p.grid[square]
 }
 
 // Sets the possible values for a given square.
 func (p *Puzzle) Set(square string, digits string) {
-	p.values[square] = digits
+	p.grid[square] = digits
 }
 
 // Removes a character from the possible values for a given square.
 func (p *Puzzle) Remove(square string, char string) {
-	vals := strings.Replace(p.values[square], char, "", 1)
-	p.values[square] = vals
+	vals := strings.Replace(p.grid[square], char, "", 1)
+	p.grid[square] = vals
 }
 
 // Called when there is only one possible value for a square.
@@ -56,8 +56,8 @@ func (p *Puzzle) Fail() {
 // intelligently choose a starting point for the next search attempt.
 func (p Puzzle) GetBestSquare(squares []string) (minSquare string) {
 	minLength := size + 1
-	for square, value := range p.Values() {
-		length := len(value)
+	for square, values := range p.Grid() {
+		length := len(values)
 		if length == 2 {
 			return square
 		} else if length > 1 && length < minLength {
@@ -71,7 +71,7 @@ func (p Puzzle) GetBestSquare(squares []string) (minSquare string) {
 func (self *Puzzle) Copy() *Puzzle {
 	p := &Puzzle{}
 	*p = *self
-	p.values = CopyMap(self.Values())
+	p.grid = CopyMap(self.Grid())
 	return p
 }
 
@@ -153,7 +153,7 @@ func getUnitsAndPeers(squares []string, allUnits [][]string) (map[string][][]str
 	return units, peers
 }
 
-// Places given input values into a puzzle and propogates constraints.
+// Places given input values into a puzzle and propagates constraints.
 func parseInput(p *Puzzle, grid map[string]string) bool {
 	for square, char := range grid {
 		if char != "." && !place(p, square, char) {
@@ -167,7 +167,7 @@ func parseInput(p *Puzzle, grid map[string]string) bool {
 // Assigns a given character as the solution value at a given square.
 func place(p *Puzzle, square, char string) bool {
 	for _, val := range allValues {
-		if string(val) != char && !propogate(p, square, string(val)) {
+		if string(val) != char && !propagate(p, square, string(val)) {
 			p.Fail()
 			return false
 		}
@@ -177,8 +177,8 @@ func place(p *Puzzle, square, char string) bool {
 
 // Removes a given character as a possible solution value at a given square and uses
 // the new values at that square to eliminate more possibilities from other squares.
-func propogate(p *Puzzle, square, char string) bool {
-	// The value is not present in the possibilites; already propogated.
+func propagate(p *Puzzle, square, char string) bool {
+	// The value is not present in the possibilites; already propagated.
 	if !strings.Contains(p.Get(square), char) {
 		return true
 	}
@@ -192,12 +192,26 @@ func propogate(p *Puzzle, square, char string) bool {
 	if length == 0 { // None of the possible values for this square result in a solution; fail.
 		p.Fail()
 		return false
-	} else if length == 1 { // There is only one possible value for this square; propogate.
+	} else if length == 1 { // There is only one possible value for this square; propagate.
 		p.Increment()
 		for _, peerSquare := range peers[square] {
-			if !propogate(p, peerSquare, vals) { // Propogation does not return a valid solution; fail.
+			if !propagate(p, peerSquare, vals) { // Propogation does not return a valid solution; fail.
 				p.Fail()
 				return false
+			}
+		}
+	} else if length == 2 { // Check if any squares can be eliminated using the "naked twins" strategy.
+		if int(square[1])+1 < size {
+			adjacent := string(square[0]) + string(square[1]+1)
+			if vals == p.Get(adjacent) {
+				for _, unitSquare := range units[square][1] {
+					if unitSquare != adjacent { // Remove "twins" and propagate.
+						if !propagate(p, unitSquare, string(vals[0])) || !propagate(p, unitSquare, string(vals[1])) {
+							p.Fail()
+							return false
+						}
+					}
+				}
 			}
 		}
 	}
@@ -215,7 +229,7 @@ func propogate(p *Puzzle, square, char string) bool {
 		if len(locations) == 0 { // The value can't be placed at any of the possible locations; fail.
 			return false
 		} else if len(locations) == 1 && !place(p, locations[0], char) {
-			// There is only one possible location for a value; place and propogate.
+			// There is only one possible location for a value; place and propagate.
 			p.Fail()
 			return false
 		}
@@ -271,18 +285,18 @@ func makeGrid(grid string, squares []string) map[string]string {
 
 // Formats and displays a puzzle.
 func showPuzzle(p *Puzzle) {
-	values := p.Values()
+	grid := p.Grid()
 	box_sep := int(math.Sqrt(float64(size)))
 	line_sep := size
 	section_sep := line_sep * box_sep
 	var squares []string
-	for sq, _ := range values {
+	for sq, _ := range grid {
 		squares = append(squares, sq)
 	}
 	sort.Strings(squares)
 	i := 1
 	for _, sq := range squares {
-		digit := values[sq]
+		digit := grid[sq]
 		fmt.Print(digit + " ")
 		if i%section_sep == 0 {
 			fmt.Println("\n")
@@ -314,8 +328,7 @@ func main() {
 	rowBoxes := []string{"ABC", "DEF", "GHI"}
 	colBoxes := []string{"123", "456", "789"}
 
-	// The possible values at a square.
-
+	// Adjust values for bigger puzzles.
 	if size == 16 {
 		rows = "ABCDEFGHIJKLMNOP"
 		cols = "123456789ABCDEFG"
@@ -342,7 +355,7 @@ func main() {
 
 	// Represent a Sudoku puzzle as a map of squares to possible values at each square.
 	puzzle := &Puzzle{
-		values:    make(map[string]string),
+		grid:      make(map[string]string),
 		numSolved: 0,
 		alive:     true,
 	}
@@ -356,7 +369,7 @@ func main() {
 	grid := makeGrid(rawGrid, squares)
 
 	// Assign the values from the input grid to their corresponding squares in the solution grid.
-	// Propogate constraints to solve as much of the puzzle as possible before searching.
+	// propagate constraints to solve as much of the puzzle as possible before searching.
 	parseInput(puzzle, grid)
 
 	// Use depth-first search to try possible values until a solution is found.
